@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>You Tapped a Goodz — Debug</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: monospace; background: #0a0a0a; color: #1DB954; padding: 2rem; }
+    p { margin: 0.5rem 0; }
+    .err { color: #ff4444; }
+    .ok { color: #1DB954; }
+    .warn { color: #f4c542; }
+  </style>
+</head>
+<body>
+  <p>Starting…</p>
+  <div id="log"></div>
+
+  <script>
+    var log = document.getElementById('log');
+    function L(msg, cls) {
+      var el = document.createElement('p');
+      el.className = cls || '';
+      el.textContent = '→ ' + msg;
+      log.appendChild(el);
+    }
+
+    function getParam(name) {
+      name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
+      var re = new RegExp('[\\?&]' + name + '=([^&#]*)');
+      var r = re.exec(location.search);
+      return r ? decodeURIComponent(r[1].replace(/\+/g, ' ')) : '';
+    }
+
+    function extractPlaylistId(url) {
+      var m = url.match(/open\.spotify\.com\/playlist\/([a-zA-Z0-9]+)/);
+      return m ? m[1] : null;
+    }
+
+    var playlistUrl = getParam('playlist_url') || 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M';
+    var playlistId = extractPlaylistId(playlistUrl);
+
+    L('playlistUrl: ' + playlistUrl);
+    L('playlistId: ' + playlistId);
+
+    if (!playlistId) {
+      L('No playlist ID — aborting fetch', 'warn');
+    } else {
+      var oembedUrl = 'https://open.spotify.com/oembed?url=' + encodeURIComponent(playlistUrl);
+      L('Fetching: ' + oembedUrl, 'warn');
+
+      var controller = new AbortController();
+      var timeoutId = setTimeout(function() {
+        L('TIMEOUT fired — aborting fetch', 'err');
+        controller.abort();
+      }, 8000);
+
+      var t0 = Date.now();
+      fetch(oembedUrl, { signal: controller.signal })
+        .then(function(r) {
+          clearTimeout(timeoutId);
+          L('Response status: ' + r.status + ' (' + (Date.now()-t0) + 'ms)', r.ok ? 'ok' : 'err');
+          if (!r.ok) throw new Error('Bad response: ' + r.status);
+          return r.json();
+        })
+        .then(function(d) {
+          L('JSON parsed OK', 'ok');
+          L('  title: ' + d.title, 'ok');
+          L('  thumbnail_url: ' + (d.thumbnail_url || 'MISSING'), d.thumbnail_url ? 'ok' : 'warn');
+          L('  has html: ' + !!d.html, 'ok');
+        })
+        .catch(function(e) {
+          clearTimeout(timeoutId);
+          L('CATCH error: ' + e.message, 'err');
+          if (e.name === 'AbortError') L('(AbortError — timeout or explicit abort)', 'warn');
+        });
+    }
+  </script>
+</body>
+</html>
