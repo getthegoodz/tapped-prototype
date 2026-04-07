@@ -189,7 +189,7 @@
       editLink.href = '/tapped-edit-url' + '?code=' + encodeURIComponent(code) + '&playlist_url=' + encodeURIComponent(playlistUrl);
     }
 
-    // ── No URL ─────────────────────────────────────
+    // ── No URL — fallback path ────────────────────────
     if (!playlistId) {
       L('No playlist ID — showing fallback', 'log-warn');
       loading.classList.add('hidden');
@@ -200,102 +200,80 @@
       titleEl.textContent = 'No playlist linked';
       descEl.textContent = 'Tap a Goodz to get started.';
       actions.classList.add('revealed');
-      return;
+    } else {
+      // ── Fetch oEmbed ────────────────────────────────
+      var oembedUrl = 'https://open.spotify.com/oembed?url=' + encodeURIComponent(playlistUrl);
+      L('Fetching: ' + oembedUrl, 'log-warn');
+
+      var controller = new AbortController();
+      var timeoutId  = setTimeout(function() {
+        L('TIMEOUT — aborting fetch', 'log-err');
+        controller.abort();
+      }, 8000);
+
+      var t0 = Date.now();
+      L('Fetch started at ' + t0, 'log-info');
+
+      fetch(oembedUrl, { signal: controller.signal })
+        .then(function(r) {
+          clearTimeout(timeoutId);
+          var ms = Date.now() - t0;
+          L('Response: status=' + r.status + ' (' + ms + 'ms)', r.ok ? 'log-ok' : 'log-err');
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        })
+        .then(function(data) {
+          var ms = Date.now() - t0;
+          L('JSON parsed (' + ms + 'ms)', 'log-ok');
+          L('  title: ' + data.title, 'log-ok');
+          L('  thumbnail_url: ' + (data.thumbnail_url || 'MISSING'), data.thumbnail_url ? 'log-ok' : 'log-warn');
+          L('  has html: ' + !!data.html, 'log-info');
+
+          L('Hiding loading spinner…', 'log-info');
+          loading.classList.add('hidden');
+
+          var thumb = data.thumbnail_url || '';
+          if (thumb) {
+            bg.style.backgroundImage = 'url(' + thumb + ')';
+            artwork.style.backgroundImage = 'url(' + thumb + ')';
+            L('Background set from thumbnail', 'log-ok');
+          } else {
+            bg.style.background = 'linear-gradient(135deg, #1DB954, #191414)';
+            bg.style.opacity = '0.6';
+            L('Using gradient fallback', 'log-warn');
+          }
+
+          titleEl.textContent = data.title || 'Your Goodz Playlist';
+
+          var embedMatch = (data.html || '').match(/src="([^"]*)"/);
+          if (embedMatch) {
+            var rawEmbed = embedMatch[1];
+            var safeEmbed = rawEmbed.replace(/\?.*$/, '?utm_source=generator&hide_cover=1');
+            L('Setting embed: ' + safeEmbed.substring(0, 60), 'log-ok');
+            spotifyEmbed.innerHTML = '<iframe src="' + safeEmbed + '" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>';
+          }
+
+          wordmark.classList.add('visible');
+          bg.classList.add('revealed');
+          artwork.classList.add('revealed');
+          setTimeout(function() { titleGroup.classList.add('revealed'); }, 800);
+          setTimeout(function() { actions.classList.add('revealed'); }, 1100);
+          setTimeout(function() { embedContainer.classList.add('revealed'); }, 1400);
+          L('Done.', 'log-ok');
+        })
+        .catch(function(err) {
+          clearTimeout(timeoutId);
+          L('CATCH: ' + err.message + (err.name === 'AbortError' ? ' (AbortError)' : ''), 'log-err');
+          loading.classList.add('hidden');
+          bg.style.background = '#1a1a1a';
+          bg.style.opacity = '1';
+          bg.classList.add('revealed');
+          wordmark.classList.add('visible');
+          titleEl.textContent = 'Your Goodz Playlist';
+          descEl.textContent = 'Open in Spotify to listen.';
+          actions.classList.add('revealed');
+        });
     }
-
-    // ── Fetch oEmbed ────────────────────────────────
-    var oembedUrl = 'https://open.spotify.com/oembed?url=' + encodeURIComponent(playlistUrl);
-    L('Fetching: ' + oembedUrl, 'log-warn');
-
-    var controller = new AbortController();
-    var timeoutId  = setTimeout(function() {
-      L('TIMEOUT — aborting fetch', 'log-err');
-      controller.abort();
-    }, 8000);
-
-    var t0 = Date.now();
-    L('Fetch started at ' + t0, 'log-info');
-
-    fetch(oembedUrl, { signal: controller.signal })
-      .then(function(r) {
-        clearTimeout(timeoutId);
-        var ms = Date.now() - t0;
-        L('Response: status=' + r.status + ' (' + ms + 'ms)', r.ok ? 'log-ok' : 'log-err');
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      })
-      .then(function(data) {
-        var ms = Date.now() - t0;
-        L('JSON parsed (' + ms + 'ms)', 'log-ok');
-        L('  title: ' + data.title, 'log-ok');
-        L('  thumbnail_url: ' + (data.thumbnail_url || 'MISSING'), data.thumbnail_url ? 'log-ok' : 'log-warn');
-        L('  has html: ' + !!data.html, 'log-info');
-
-        // Hide loading
-        L('Hiding loading spinner…', 'log-info');
-        loading.classList.add('hidden');
-
-        // Background
-        var thumb = data.thumbnail_url || '';
-        if (thumb) {
-          bg.style.backgroundImage = 'url(' + thumb + ')';
-          artwork.style.backgroundImage = 'url(' + thumb + ')';
-          L('Background set from thumbnail', 'log-ok');
-        } else {
-          bg.style.background = 'linear-gradient(135deg, #1DB954, #191414)';
-          bg.style.opacity = '0.6';
-          L('Using gradient fallback (no thumbnail)', 'log-warn');
-        }
-
-        // Title
-        titleEl.textContent = data.title || 'Your Goodz Playlist';
-
-        // Embed
-        var embedMatch = (data.html || '').match(/src="([^"]*)"/);
-        if (embedMatch) {
-          var rawEmbed = embedMatch[1];
-          var safeEmbed = rawEmbed.replace(/\?.*$/, '?utm_source=generator&hide_cover=1');
-          L('Setting Spotify embed: ' + safeEmbed.substring(0, 60) + '…', 'log-ok');
-          spotifyEmbed.innerHTML = '<iframe src="' + safeEmbed + '" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>';
-          L('Embed innerHTML set', 'log-ok');
-        } else {
-          L('No embed URL found in html', 'log-warn');
-        }
-
-        // Trigger animations with debug logging
-        L('Triggering wordmark…', 'log-info');
-        wordmark.classList.add('visible');
-
-        L('Triggering bg animation…', 'log-info');
-        bg.classList.add('revealed');
-
-        L('Triggering artwork animation…', 'log-info');
-        artwork.classList.add('revealed');
-
-        L('Triggering title animation (800ms delay)…', 'log-info');
-        setTimeout(function() { titleGroup.classList.add('revealed'); L('title revealed', 'log-info'); }, 800);
-
-        L('Triggering actions animation (1100ms delay)…', 'log-info');
-        setTimeout(function() { actions.classList.add('revealed'); L('actions revealed', 'log-info'); }, 1100);
-
-        setTimeout(function() { embedContainer.classList.add('revealed'); L('embed revealed', 'log-info'); }, 1400);
-
-        L('All animations triggered. Done.', 'log-ok');
-
-      })
-      .catch(function(err) {
-        clearTimeout(timeoutId);
-        L('CATCH: ' + err.message + (err.name === 'AbortError' ? ' (AbortError)' : ''), 'log-err');
-        // Fallback: show page anyway
-        loading.classList.add('hidden');
-        bg.style.background = '#1a1a1a';
-        bg.style.opacity = '1';
-        bg.classList.add('revealed');
-        wordmark.classList.add('visible');
-        titleEl.textContent = 'Your Goodz Playlist';
-        descEl.textContent = 'Open in Spotify to listen.';
-        actions.classList.add('revealed');
-      });
 
     // Debug: tap to toggle log visibility
     document.addEventListener('click', function() {
