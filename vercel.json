@@ -1,0 +1,8 @@
+{
+  "version": 2,
+  "routes": [
+    { "src": "/", "dest": "/prototypes/prototype-a.html" },
+    { "src": "/tapped-edit-url", "dest": "https://www.getthegoodz.com/tapped-edit-url", "status": 200 },
+    { "src": "/tapped", "dest": "/prototypes/prototype-a.html" }
+  ]
+}
