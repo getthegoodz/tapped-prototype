@@ -16,9 +16,10 @@ Exploring a better landed experience when you tap a Goodz NFC card. Currently: b
 
 ## Proto setup
 - Local: `Goodz/subprojects/tapped-prototype/`
-- Testing: `goodz-tapped-prototype.vercel.app` (Vercel, mikerosenthal account)
-- GitHub: `getthegoodz/tapped-prototype` (new repo, public)
-- Workflow: push to `main` → auto-deploys to `goodz-tapped-prototype.vercel.app`
+- Testing: `https://tapped-prototype.vercel.app` (Vercel, mikerosenthal account)
+- GitHub: `https://github.com/getthegoodz/tapped-prototype` (public)
+- Workflow: push to `main` → auto-deploys to `tapped-prototype.vercel.app`
+- Test URL: `https://tapped-prototype.vercel.app/?playlist_url=https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M&code=test`
 
 ## Key files
 - `SKILL.md` — this file
