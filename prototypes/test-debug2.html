@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>You Tapped a Goodz — Debug v2</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --spotify-green: #1DB954; --spotify-black: #191414; --text-light: #ffffff; --text-muted: rgba(255,255,255,0.7); }
+    html, body { height: 100%; font-family: monospace; background: #0a0a0a; color: var(--text-light); overflow: hidden; }
+
+    #bg {
+      position: fixed; inset: 0;
+      background-size: cover; background-position: center; background-repeat: no-repeat;
+      transform: scale(1.08);
+      filter: blur(24px) brightness(0.5);
+      opacity: 0;
+      will-change: transform, filter, opacity;
+    }
+    #bg.revealed { animation: artReveal 1.4s cubic-bezier(0.22,1,0.36,1) forwards; }
+    @keyframes artReveal {
+      0%   { transform: scale(1.12); filter: blur(24px) brightness(0.4); opacity: 0; }
+      100% { transform: scale(1.0);  filter: blur(0px)  brightness(1.0);  opacity: 1; }
+    }
+
+    #overlay {
+      position: fixed; inset: 0;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.3) 40%, rgba(0,0,0,0.85) 100%);
+      pointer-events: none;
+    }
+
+    #loading {
+      position: fixed; inset: 0; z-index: 50;
+      display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 1rem;
+      background: #0a0a0a;
+    }
+    #loading.hidden { opacity: 0; pointer-events: none; transition: opacity 0.5s ease; }
+    .loader { width: 48px; height: 48px; border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--spotify-green); border-radius: 50%; animation: spin 0.9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading-status { color: var(--text-muted); font-size: 0.8rem; text-align: center; max-width: 300px; }
+
+    #content {
+      position: relative; z-index: 10;
+      display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+      height: 100%; padding: 2rem 1.5rem 4rem; text-align: center;
+    }
+
+    #wordmark { position: fixed; top: 1.5rem; left: 50%; transform: translateX(-50%); z-index: 20; opacity: 0; }
+    #wordmark.visible { opacity: 1; transition: opacity 0.6s ease; }
+    .wordmark-text { font-family: 'Exo', sans-serif; font-weight: 900; font-size: 1.1rem; letter-spacing: 0.3em; text-transform: uppercase; }
+
+    #artwork {
+      width: 200px; height: 200px; border-radius: 50%;
+      background-size: cover; background-position: center;
+      box-shadow: 0 0 80px rgba(0,0,0,0.7);
+      opacity: 0; transform: scale(0.6); margin-bottom: 2rem;
+    }
+    #artwork.revealed { animation: artworkReveal 1.2s cubic-bezier(0.22,1,0.36,1) 0.3s forwards; }
+    @keyframes artworkReveal {
+      0%   { opacity: 0; transform: scale(0.5); }
+      60%  { opacity: 1; transform: scale(1.05); }
+      100% { opacity: 1; transform: scale(1.0); }
+    }
+
+    #title-group { opacity: 0; transform: translateY(16px); margin-bottom: 2rem; max-width: 360px; }
+    #title-group.revealed { animation: fadeUp 0.8s ease 1.0s forwards; }
+    @keyframes fadeUp { to { opacity: 1; transform: translateY(0); } }
+    #playlist-title { font-size: clamp(1.4rem, 5vw, 2rem); font-weight: 700; margin-bottom: 0.4rem; text-shadow: 0 2px 16px rgba(0,0,0,0.6); }
+    #playlist-description { font-size: 0.85rem; color: var(--text-muted); }
+
+    #actions { opacity: 0; transform: translateY(12px); display: flex; flex-direction: column; align-items: center; gap: 0.75rem; }
+    #actions.revealed { animation: fadeUp 0.7s ease 1.4s forwards; }
+    .btn-spotify { display: inline-flex; align-items: center; gap: 0.6rem; background: var(--spotify-green); color: var(--spotify-black); font-weight: 700; font-size: 1rem; padding: 0.85rem 2rem; border-radius: 999px; text-decoration: none; box-shadow: 0 4px 24px rgba(29,185,84,0.35); }
+    .spotify-icon { width: 22px; height: 22px; fill: var(--spotify-black); }
+    .btn-change { font-size: 0.78rem; color: var(--text-muted); text-decoration: underline; cursor: pointer; background: none; border: none; padding: 0.25rem; }
+
+    #embed-container { width: 100%; max-width: 500px; opacity: 0; margin-top: 1rem; }
+    #embed-container.revealed { animation: fadeUp 0.7s ease 1.8s forwards; }
+    #embed-container iframe { border-radius: 12px; border: none; width: 100%; height: 152px; }
+
+    #edit-link { position: fixed; bottom: 1.25rem; right: 1.25rem; z-index: 20; font-size: 0.7rem; color: rgba(255,255,255,0.35); text-decoration: none; letter-spacing: 0.05em; }
+    #edit-link:hover { color: rgba(255,255,255,0.7); }
+
+    /* ── Inline log panel ──────────────────────────────── */
+    #log {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      background: rgba(0,0,0,0.92); padding: 1rem; font-size: 0.75rem;
+      max-height: 40vh; overflow-y: auto;
+      display: none;
+    }
+    #log.visible { display: block; }
+    #log p { margin: 2px 0; }
+    .log-ok { color: #1DB954; }
+    .log-err { color: #ff4444; }
+    .log-warn { color: #f4c542; }
+    .log-info { color: #aaa; }
+  </style>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%231DB954'/><text x='50' y='72' font-size='65' font-family='Arial Black' font-weight='900' fill='%23191414' text-anchor='middle'>G</text></svg>">
+</head>
+<body>
+
+  <div id="log"></div>
+
+  <!-- Loading -->
+  <div id="loading">
+    <div class="loader"></div>
+    <div id="loading-status">Starting…</div>
+  </div>
+
+  <!-- Background -->
+  <div id="bg"></div>
+  <div id="overlay"></div>
+
+  <!-- Wordmark -->
+  <div id="wordmark"><span class="wordmark-text">Goodz</span></div>
+
+  <!-- Content -->
+  <div id="content">
+    <div id="artwork"></div>
+    <div id="title-group">
+      <div id="playlist-title">Loading…</div>
+      <div id="playlist-description"></div>
+    </div>
+    <div id="actions">
+      <a id="btn-listen" class="btn-spotify" href="#" target="_blank" rel="noopener">
+        <svg class="spotify-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+        </svg>
+        Listen Now
+      </a>
+      <div id="embed-container"><div id="spotify-embed"></div></div>
+      <button class="btn-change" id="btn-change">Change playlist</button>
+    </div>
+  </div>
+
+  <a id="edit-link" href="#">Change playlist →</a>
+
+  <script>
+    // ── Debug logger ─────────────────────────────────
+    var log = document.getElementById('log');
+    var loadingStatus = document.getElementById('loading-status');
+    function L(msg, cls) {
+      cls = cls || 'log-info';
+      var el = document.createElement('p');
+      el.className = cls;
+      el.textContent = Date.now() + ' ' + msg;
+      log.appendChild(el);
+      loadingStatus.textContent = msg;
+    }
+
+    // ── Helpers ─────────────────────────────────────
+    function getParam(name) {
+      name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
+      var re = new RegExp('[\\?&]' + name + '=([^&#]*)');
+      var r = re.exec(location.search);
+      return r ? decodeURIComponent(r[1].replace(/\+/g, ' ')) : '';
+    }
+    function extractPlaylistId(url) {
+      var m = url.match(/open\.spotify\.com\/playlist\/([a-zA-Z0-9]+)/);
+      return m ? m[1] : null;
+    }
+
+    // ── State ───────────────────────────────────────
+    var playlistUrl = getParam('playlist_url') || 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M';
+    var code       = getParam('code') || '';
+    var playlistId  = extractPlaylistId(playlistUrl);
+
+    L('playlistUrl: ' + playlistUrl.substring(0, 80), 'log-info');
+    L('playlistId: ' + playlistId, 'log-info');
+
+    // ── DOM refs ───────────────────────────────────
+    var bg           = document.getElementById('bg');
+    var artwork      = document.getElementById('artwork');
+    var titleGroup   = document.getElementById('title-group');
+    var actions      = document.getElementById('actions');
+    var embedContainer = document.getElementById('embed-container');
+    var wordmark     = document.getElementById('wordmark');
+    var loading      = document.getElementById('loading');
+    var loadingStatusEl = document.getElementById('loading-status');
+    var titleEl      = document.getElementById('playlist-title');
+    var descEl       = document.getElementById('playlist-description');
+    var btnListen    = document.getElementById('btn-listen');
+    var spotifyEmbed = document.getElementById('spotify-embed');
+    var editLink     = document.getElementById('edit-link');
+
+    // ── Fallbacks ──────────────────────────────────
+    btnListen.href = playlistUrl || 'https://open.spotify.com';
+    if (code || playlistUrl) {
+      editLink.href = '/tapped-edit-url' + '?code=' + encodeURIComponent(code) + '&playlist_url=' + encodeURIComponent(playlistUrl);
+    }
+
+    // ── No URL ─────────────────────────────────────
+    if (!playlistId) {
+      L('No playlist ID — showing fallback', 'log-warn');
+      loading.classList.add('hidden');
+      bg.style.background = '#1a1a1a';
+      bg.style.opacity = '1';
+      bg.classList.add('revealed');
+      wordmark.classList.add('visible');
+      titleEl.textContent = 'No playlist linked';
+      descEl.textContent = 'Tap a Goodz to get started.';
+      actions.classList.add('revealed');
+      return;
+    }
+
+    // ── Fetch oEmbed ────────────────────────────────
+    var oembedUrl = 'https://open.spotify.com/oembed?url=' + encodeURIComponent(playlistUrl);
+    L('Fetching: ' + oembedUrl, 'log-warn');
+
+    var controller = new AbortController();
+    var timeoutId  = setTimeout(function() {
+      L('TIMEOUT — aborting fetch', 'log-err');
+      controller.abort();
+    }, 8000);
+
+    var t0 = Date.now();
+    L('Fetch started at ' + t0, 'log-info');
+
+    fetch(oembedUrl, { signal: controller.signal })
+      .then(function(r) {
+        clearTimeout(timeoutId);
+        var ms = Date.now() - t0;
+        L('Response: status=' + r.status + ' (' + ms + 'ms)', r.ok ? 'log-ok' : 'log-err');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function(data) {
+        var ms = Date.now() - t0;
+        L('JSON parsed (' + ms + 'ms)', 'log-ok');
+        L('  title: ' + data.title, 'log-ok');
+        L('  thumbnail_url: ' + (data.thumbnail_url || 'MISSING'), data.thumbnail_url ? 'log-ok' : 'log-warn');
+        L('  has html: ' + !!data.html, 'log-info');
+
+        // Hide loading
+        L('Hiding loading spinner…', 'log-info');
+        loading.classList.add('hidden');
+
+        // Background
+        var thumb = data.thumbnail_url || '';
+        if (thumb) {
+          bg.style.backgroundImage = 'url(' + thumb + ')';
+          artwork.style.backgroundImage = 'url(' + thumb + ')';
+          L('Background set from thumbnail', 'log-ok');
+        } else {
+          bg.style.background = 'linear-gradient(135deg, #1DB954, #191414)';
+          bg.style.opacity = '0.6';
+          L('Using gradient fallback (no thumbnail)', 'log-warn');
+        }
+
+        // Title
+        titleEl.textContent = data.title || 'Your Goodz Playlist';
+
+        // Embed
+        var embedMatch = (data.html || '').match(/src="([^"]*)"/);
+        if (embedMatch) {
+          var rawEmbed = embedMatch[1];
+          var safeEmbed = rawEmbed.replace(/\?.*$/, '?utm_source=generator&hide_cover=1');
+          L('Setting Spotify embed: ' + safeEmbed.substring(0, 60) + '…', 'log-ok');
+          spotifyEmbed.innerHTML = '<iframe src="' + safeEmbed + '" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>';
+          L('Embed innerHTML set', 'log-ok');
+        } else {
+          L('No embed URL found in html', 'log-warn');
+        }
+
+        // Trigger animations with debug logging
+        L('Triggering wordmark…', 'log-info');
+        wordmark.classList.add('visible');
+
+        L('Triggering bg animation…', 'log-info');
+        bg.classList.add('revealed');
+
+        L('Triggering artwork animation…', 'log-info');
+        artwork.classList.add('revealed');
+
+        L('Triggering title animation (800ms delay)…', 'log-info');
+        setTimeout(function() { titleGroup.classList.add('revealed'); L('title revealed', 'log-info'); }, 800);
+
+        L('Triggering actions animation (1100ms delay)…', 'log-info');
+        setTimeout(function() { actions.classList.add('revealed'); L('actions revealed', 'log-info'); }, 1100);
+
+        setTimeout(function() { embedContainer.classList.add('revealed'); L('embed revealed', 'log-info'); }, 1400);
+
+        L('All animations triggered. Done.', 'log-ok');
+
+      })
+      .catch(function(err) {
+        clearTimeout(timeoutId);
+        L('CATCH: ' + err.message + (err.name === 'AbortError' ? ' (AbortError)' : ''), 'log-err');
+        // Fallback: show page anyway
+        loading.classList.add('hidden');
+        bg.style.background = '#1a1a1a';
+        bg.style.opacity = '1';
+        bg.classList.add('revealed');
+        wordmark.classList.add('visible');
+        titleEl.textContent = 'Your Goodz Playlist';
+        descEl.textContent = 'Open in Spotify to listen.';
+        actions.classList.add('revealed');
+      });
+
+    // Debug: tap to toggle log visibility
+    document.addEventListener('click', function() {
+      log.classList.toggle('visible');
+    });
+  </script>
+</body>
+</html>
